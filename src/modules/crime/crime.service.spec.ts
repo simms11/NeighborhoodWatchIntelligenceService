@@ -73,8 +73,8 @@ describe('CrimeService', () => {
             config: {},
         } as AxiosResponse;
 
-        (httpService.get as jest.Mock).mockReturnValue(of(mockPoliceData));
-
+        const mockGet = httpService.get as jest.Mock;
+        mockGet.mockReturnValue(of(mockPoliceData));
         // ACT
         const result = await service.findCrimesByPostcode('SW1A 2AA');
 

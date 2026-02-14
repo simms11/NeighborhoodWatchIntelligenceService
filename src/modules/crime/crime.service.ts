@@ -1,12 +1,28 @@
-import { BadRequestException, Injectable, InternalServerErrorException } from "@nestjs/common";
-import { HttpService } from "@nestjs/axios"; // <--- IMPORT THIS
+import { BadRequestException, Injectable, InternalServerErrorException, Logger } from "@nestjs/common";
+import { HttpService } from "@nestjs/axios";
 import { LocationService } from "../location/location.service";
 import { CrimeUtils } from "./crime.utils";
 import { firstValueFrom } from "rxjs";
 import { Crime } from "./interfaces/crime.interface";
 
+interface RawCrimeData {
+    id: number;
+    category: string;
+    location_type: string;
+    location: {
+        latitude: string;
+        longitude: string;
+        street: { id: number; name: string };
+    };
+    context: string;
+    outcome_status: { category: string; date: string } | null;
+    month: string;
+}
+
 @Injectable()
 export class CrimeService {
+    private readonly logger = new Logger(CrimeService.name);
+
     constructor(
         private readonly locationService: LocationService,
         private readonly httpService: HttpService
@@ -24,18 +40,21 @@ export class CrimeService {
         const url = `https://data.police.uk/api/crimes-street/all-crime?lat=${lat}&lng=${lng}`;
 
         try {
-            const { data } = await firstValueFrom(this.httpService.get(url));
+            const { data } = await firstValueFrom(
+                this.httpService.get<RawCrimeData[]>(url)
+            );
 
-            return data.map((item: any) => this.mapToDomain(item));
+            return data.map((rawItem: RawCrimeData) => this.mapToDomain(rawItem));
 
-        } catch (error) {
-            console.error(`Failed to fetch crimes for ${normalized}`, error.message);
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Unknown error';
 
-            throw new InternalServerErrorException('Could not fetch crime data');
+            this.logger.error(`Failed to fetch crimes for ${normalized}: ${message}`);
+            throw new InternalServerErrorException('An error occurred while retrieving neighborhood crime data.');
         }
     }
 
-    private mapToDomain(raw: any): Crime {
+    private mapToDomain(raw: RawCrimeData): Crime {
         return {
             id: raw.id,
             category: raw.category,

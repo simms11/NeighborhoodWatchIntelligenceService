@@ -1,44 +1,35 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import {async, firstValueFrom} from 'rxjs';
+import { firstValueFrom } from 'rxjs';
 import { Coordinates } from './interfaces/coordinates.interface';
-import {AxiosError} from "axios";
 
 @Injectable()
-export class  LocationService{
-    constructor(private readonly httpService: HttpService) {
-    }
+export class LocationService {
+    private readonly logger = new Logger(LocationService.name);
 
-    async getCoordinates(rawPostcode: string): Promise<Coordinates> {
-        const normalizedPostcode = rawPostcode.replace(/\s/g, '');
+    constructor(private readonly httpService: HttpService) {}
 
-        //UK postcode
-        const postcodeRegex = /^[A-Z]{1,2}[0-9][A-Z0-9]? ?[0-9][A-Z]{2}$/;
-        if(!postcodeRegex.test(normalizedPostcode)){
-            throw new NotFoundException(`Invalid postcode format: ${normalizedPostcode}`);
-        }
+    async getCoordinates(postcode: string): Promise<Coordinates> {
+        const cleanPostcode = postcode.replace(/\s+/g, '').toUpperCase();
+
         try {
-            //convert Obserable to a promise
-            const {data} = await firstValueFrom(
-                this.httpService.get(`https://api.postcodes.io/postcodes/${normalizedPostcode}`)
+            const { data } = await firstValueFrom(
+                this.httpService.get(`https://api.postcodes.io/postcodes/${cleanPostcode}`)
             );
 
-            if(!data || !data.result){
-                throw new NotFoundException('Location not found');
+            if (!data || !data.result) {
+                throw new NotFoundException('Postcode coordinates not found');
             }
 
             return {
                 lat: data.result.latitude,
                 lng: data.result.longitude,
             };
-
-        } catch (error) {
-
-            const axiosError = error as AxiosError;
-
-            if(axiosError.response?.status === 404) {
-                throw new NotFoundException(`Postcode '${rawPostcode}' not found.`);
+        } catch (error: any) {
+            if (error.response?.status === 404) {
+                throw new NotFoundException(`Location not found for postcode: ${postcode}`);
             }
+            this.logger.error(`Location API error: ${error.message}`);
             throw error;
         }
     }
