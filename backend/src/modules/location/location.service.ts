@@ -1,36 +1,35 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { HttpService } from '@nestjs/axios';
-import { firstValueFrom } from 'rxjs';
-import { Coordinates } from './interfaces/coordinates.interface';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import axios from 'axios';
 
 @Injectable()
 export class LocationService {
-    private readonly logger = new Logger(LocationService.name);
+    private readonly NOMINATIM_API_URL = 'https://nominatim.openstreetmap.org/search';
 
-    constructor(private readonly httpService: HttpService) {}
-
-    async getCoordinates(postcode: string): Promise<Coordinates> {
-        const cleanPostcode = postcode.replace(/\s+/g, '').toUpperCase();
-
+    async getCoordinates(address: string): Promise<{ latitude: number; longitude: number }> {
         try {
-            const { data } = await firstValueFrom(
-                this.httpService.get(`https://api.postcodes.io/postcodes/${cleanPostcode}`)
-            );
+            const response = await axios.get(this.NOMINATIM_API_URL, {
+                params: {
+                    q: address,
+                    format: 'json',
+                    limit: 1,
+                },
+                headers: {
+                    'User-Agent': 'NeighborhoodWatchApp/1.0',
+                },
+            });
 
-            if (!data || !data.result) {
-                throw new NotFoundException('Postcode coordinates not found');
+            if (response.data && response.data.length > 0) {
+                const bestMatch = response.data[0];
+                return {
+                    latitude: parseFloat(bestMatch.lat),
+                    longitude: parseFloat(bestMatch.lon),
+                };
             }
 
-            return {
-                lat: data.result.latitude,
-                lng: data.result.longitude,
-            };
-        } catch (error: any) {
-            if (error.response?.status === 404) {
-                throw new NotFoundException(`Location not found for postcode: ${postcode}`);
-            }
-            this.logger.error(`Location API error: ${error.message}`);
-            throw error;
+            throw new Error('No results found');
+        } catch (error) {
+            console.error(`Geocoding failed for: ${address}`);
+            throw new NotFoundException(`Could not locate: ${address}`);
         }
     }
 }

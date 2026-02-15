@@ -8,9 +8,20 @@ interface SearchBoxProps {
 export const SearchBox = ({ onSearch, isLoading }: SearchBoxProps) => {
     const [postcode, setPostcode] = useState('');
 
+    const sanitizePostcode = (raw: string) => {
+        // Remove all spaces and convert to uppercase
+        // Example: "m1 1ag" -> "M11AG"
+        // Example: "sw1a 1aa" -> "SW1A1AA"
+        return raw.replace(/\s+/g, '').toUpperCase();
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        if (postcode.trim()) onSearch(postcode);
+        const cleanPostcode = sanitizePostcode(postcode);
+
+        if (cleanPostcode) {
+            onSearch(cleanPostcode);
+        }
     };
 
     return (
@@ -24,7 +35,7 @@ export const SearchBox = ({ onSearch, isLoading }: SearchBoxProps) => {
                     type="text"
                     value={postcode}
                     onChange={(e) => setPostcode(e.target.value)}
-                    placeholder="e.g. SW1A 2AA"
+                    placeholder="e.g. SW1A 2AA, London, Manchester"
                     className="flex-1 min-w-0 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm transition-all"
                 />
                 <button

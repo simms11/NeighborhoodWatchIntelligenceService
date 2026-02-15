@@ -29,9 +29,12 @@ export default function NeighborhoodDashboard() {
           Number(data[0].location.latitude),
           Number(data[0].location.longitude)
         ]);
+      } else {
+        alert("No crime data found for this location. Ensure the postcode is valid for England, Wales, or Northern Ireland.");
       }
     } catch (err) {
-      console.error(err);
+      console.error('Search error:', err);
+      alert("Could not retrieve data. Please check your connection or postcode.");
     } finally {
       setLoading(false);
     }
