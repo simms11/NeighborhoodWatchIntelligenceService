@@ -21,7 +21,7 @@ A full-stack crime visualization dashboard using Next.js, React, and NestJS. It 
 
 * **Frontend:** Next.js 15, React 19, Leaflet, TailwindCSS 4
 * **Backend:** NestJS, Axios
-* **Data Source:** Police.uk Data API
+  **Data Source:** [Police.uk Open Data API](https://data.police.uk/docs/)
 
 ## Quick Start
 
