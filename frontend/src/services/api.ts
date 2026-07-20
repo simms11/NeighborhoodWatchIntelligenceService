@@ -1,6 +1,6 @@
 import { Crime } from '../../../backend/src/modules/crime/interfaces/crime.interface';
 
-const API_BASE_URL = 'http://localhost:3001';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
 
 export const fetchCrimes = async (postcode: string): Promise<Crime[]> => {
     const response = await fetch(`${API_BASE_URL}/crimes/search?postcode=${postcode}`);
