@@ -46,6 +46,9 @@ export default function MapComponent({ datasets, center }: MapProps) {
             }
             markersLayerRef.current = null;
         };
+        // `center` here only seeds the map's initial view; later changes are
+        // handled by the flyTo effect below, so it's deliberately excluded.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     // fly Animation
