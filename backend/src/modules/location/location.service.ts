@@ -4,7 +4,7 @@ import axios from 'axios';
 @Injectable()
 export class LocationService {
     private readonly POSTCODES_IO_URL = 'https://api.postcodes.io/postcodes';
-    private readonly NOMINATIM_API_URL = 'https://nominatim.openstreetmap.org/search';
+    private readonly PHOTON_API_URL = 'https://photon.komoot.io/api/';
     private readonly UK_POSTCODE_REGEX = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 
     async getCoordinates(address: string): Promise<{ latitude: number; longitude: number }> {
@@ -15,8 +15,8 @@ export class LocationService {
             if (postcodeMatch) return postcodeMatch;
         }
 
-        const nominatimMatch = await this.lookupNominatim(trimmed);
-        if (nominatimMatch) return nominatimMatch;
+        const cityMatch = await this.lookupCityName(trimmed);
+        if (cityMatch) return cityMatch;
 
         throw new NotFoundException(`Could not locate: ${address}`);
     }
@@ -36,28 +36,22 @@ export class LocationService {
         return null;
     }
 
-    private async lookupNominatim(address: string): Promise<{ latitude: number; longitude: number } | null> {
+    private async lookupCityName(address: string): Promise<{ latitude: number; longitude: number } | null> {
         try {
-            const response = await axios.get(this.NOMINATIM_API_URL, {
+            const response = await axios.get(this.PHOTON_API_URL, {
                 params: {
                     q: address,
-                    format: 'json',
                     limit: 1,
-                },
-                headers: {
-                    'User-Agent': 'NeighborhoodWatchApp/1.0',
                 },
             });
 
-            if (response.data && response.data.length > 0) {
-                const bestMatch = response.data[0];
-                return {
-                    latitude: parseFloat(bestMatch.lat),
-                    longitude: parseFloat(bestMatch.lon),
-                };
+            const bestMatch = response.data?.features?.[0];
+            if (bestMatch) {
+                const [longitude, latitude] = bestMatch.geometry.coordinates;
+                return { latitude, longitude };
             }
         } catch (error) {
-            console.error(`Nominatim lookup failed for: ${address}`);
+            console.error(`Photon lookup failed for: ${address}`);
         }
 
         return null;
