@@ -3,9 +3,40 @@ import axios from 'axios';
 
 @Injectable()
 export class LocationService {
+    private readonly POSTCODES_IO_URL = 'https://api.postcodes.io/postcodes';
     private readonly NOMINATIM_API_URL = 'https://nominatim.openstreetmap.org/search';
+    private readonly UK_POSTCODE_REGEX = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 
     async getCoordinates(address: string): Promise<{ latitude: number; longitude: number }> {
+        const trimmed = address.trim();
+
+        if (this.UK_POSTCODE_REGEX.test(trimmed)) {
+            const postcodeMatch = await this.lookupPostcode(trimmed);
+            if (postcodeMatch) return postcodeMatch;
+        }
+
+        const nominatimMatch = await this.lookupNominatim(trimmed);
+        if (nominatimMatch) return nominatimMatch;
+
+        throw new NotFoundException(`Could not locate: ${address}`);
+    }
+
+    private async lookupPostcode(postcode: string): Promise<{ latitude: number; longitude: number } | null> {
+        try {
+            const response = await axios.get(`${this.POSTCODES_IO_URL}/${encodeURIComponent(postcode)}`);
+            const result = response.data?.result;
+
+            if (result) {
+                return { latitude: result.latitude, longitude: result.longitude };
+            }
+        } catch (error) {
+            console.error(`postcodes.io lookup failed for: ${postcode}`);
+        }
+
+        return null;
+    }
+
+    private async lookupNominatim(address: string): Promise<{ latitude: number; longitude: number } | null> {
         try {
             const response = await axios.get(this.NOMINATIM_API_URL, {
                 params: {
@@ -25,11 +56,10 @@ export class LocationService {
                     longitude: parseFloat(bestMatch.lon),
                 };
             }
-
-            throw new Error('No results found');
         } catch (error) {
-            console.error(`Geocoding failed for: ${address}`);
-            throw new NotFoundException(`Could not locate: ${address}`);
+            console.error(`Nominatim lookup failed for: ${address}`);
         }
+
+        return null;
     }
 }
