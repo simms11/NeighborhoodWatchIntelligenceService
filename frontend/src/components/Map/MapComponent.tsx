@@ -3,25 +3,23 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import { Crime } from '../../../../backend/src/modules/crime/interfaces/crime.interface';
 
-const DefaultIcon = L.icon({
-    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-    iconSize: [25, 41],
-    iconAnchor: [12, 41],
-    popupAnchor: [1, -34],
-});
+export interface CrimeDataset {
+    label: string;
+    color: string;
+    crimes: Crime[];
+}
 
 interface MapProps {
-    crimes: any[];
+    datasets: CrimeDataset[];
     center: [number, number];
 }
 
-export default function MapComponent({ crimes, center }: MapProps) {
+export default function MapComponent({ datasets, center }: MapProps) {
     const mapContainerRef = useRef<HTMLDivElement | null>(null);
     const mapInstanceRef = useRef<L.Map | null>(null);
     const markersLayerRef = useRef<L.LayerGroup | null>(null);
-
 
     useEffect(() => {
         if (!mapContainerRef.current) return;
@@ -40,7 +38,6 @@ export default function MapComponent({ crimes, center }: MapProps) {
         markersLayerRef.current = L.layerGroup().addTo(map);
 
         return () => {
-
             const mapInstance = mapInstanceRef.current;
 
             if (mapInstance) {
@@ -58,10 +55,9 @@ export default function MapComponent({ crimes, center }: MapProps) {
 
         map.flyTo(center, 13, {
             animate: true,
-            duration: 1.5
+            duration: 1.5,
         });
     }, [center]);
-
 
     useEffect(() => {
         const layerGroup = markersLayerRef.current;
@@ -70,15 +66,24 @@ export default function MapComponent({ crimes, center }: MapProps) {
 
         layerGroup.clearLayers();
 
-        if (crimes && crimes.length > 0) {
+        datasets.forEach(({ crimes, color, label }) => {
+            if (!crimes) return;
+
             crimes.forEach((crime) => {
                 const lat = Number(crime.location?.latitude);
                 const lng = Number(crime.location?.longitude);
 
                 if (!isNaN(lat) && !isNaN(lng)) {
-                    L.marker([lat, lng], { icon: DefaultIcon })
+                    L.circleMarker([lat, lng], {
+                        radius: 6,
+                        color,
+                        fillColor: color,
+                        fillOpacity: 0.75,
+                        weight: 1,
+                    })
                         .bindPopup(`
                             <div style="font-family: sans-serif; font-size: 13px;">
+                                ${label ? `<strong style="color: ${color};">${label}</strong><br/>` : ''}
                                 <strong>${crime.category.replace(/-/g, ' ')}</strong><br/>
                                 <span style="color: gray;">${crime.location.street?.name}</span>
                             </div>
@@ -86,8 +91,8 @@ export default function MapComponent({ crimes, center }: MapProps) {
                         .addTo(layerGroup);
                 }
             });
-        }
-    }, [crimes]);
+        });
+    }, [datasets]);
 
     return <div ref={mapContainerRef} className="h-full w-full outline-none z-0" />;
 }
