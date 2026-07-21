@@ -1,5 +1,5 @@
 import React from 'react';
-import { MonthlyCrimeCount } from '../../../backend/src/modules/crime/crime.service';
+import { MonthlyCrimeCount } from '../../../backend/src/modules/crime/interfaces/crime.interface';
 
 interface TrendChartProps {
     data: MonthlyCrimeCount[];

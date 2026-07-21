@@ -1,5 +1,4 @@
-import { Crime } from '../../../backend/src/modules/crime/interfaces/crime.interface';
-import { MonthlyCrimeCount } from '../../../backend/src/modules/crime/crime.service';
+import { Crime, MonthlyCrimeCount } from '../../../backend/src/modules/crime/interfaces/crime.interface';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:3001';
 

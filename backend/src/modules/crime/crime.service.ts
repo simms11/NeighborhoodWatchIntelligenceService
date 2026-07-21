@@ -2,14 +2,9 @@ import { Injectable } from '@nestjs/common';
 import axios from 'axios';
 import { LocationService } from '../location/location.service';
 import { CacheService } from '../../shared/cache/cache.service';
-import { Crime } from './interfaces/crime.interface';
+import { Crime, MonthlyCrimeCount } from './interfaces/crime.interface';
 
 const CRIME_CACHE_TTL_MS = 60 * 60 * 1000; // Police.uk data only refreshes monthly
-
-export interface MonthlyCrimeCount {
-    month: string;
-    total: number;
-}
 
 @Injectable()
 export class CrimeService {

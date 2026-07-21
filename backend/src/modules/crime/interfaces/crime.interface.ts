@@ -19,3 +19,8 @@ export interface Crime {
     } | null;
     month:string;
 }
+
+export interface MonthlyCrimeCount {
+    month: string;
+    total: number;
+}
