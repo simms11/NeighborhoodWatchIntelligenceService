@@ -10,14 +10,11 @@ export class CrimeService {
     constructor(private readonly locationService: LocationService) {}
 
     async getCrimesByPostcode(postcode: string): Promise<Crime[]> {
-        const { latitude, longitude } = await this.locationService.getCoordinates(postcode);
+        const { lat, lng } = await this.locationService.getCoordinates(postcode);
 
         try {
             const response = await axios.get(this.POLICE_API_URL, {
-                params: {
-                    lat: latitude,
-                    lng: longitude,
-                },
+                params: { lat, lng },
             });
             return response.data;
         } catch (error) {

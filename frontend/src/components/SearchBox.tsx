@@ -10,13 +10,10 @@ interface SearchBoxProps {
 export const SearchBox = ({ onSearch, isLoading }: SearchBoxProps) => {
     const [query, setQuery] = useState('');
 
-    const sanitizeQuery = (raw: string) => {
-        const trimmed = raw.trim();
-        if (/\d/.test(trimmed)) {
-            return trimmed.replace(/\s+/g, '').toUpperCase();
-        }
-        return trimmed;
-    };
+    // Only collapse redundant whitespace here — postcode formatting (spacing,
+    // casing) is the backend's job, since stripping spaces entirely breaks
+    // the freeform geocoding fallback for postcodes that need it.
+    const sanitizeQuery = (raw: string) => raw.trim().replace(/\s+/g, ' ');
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();

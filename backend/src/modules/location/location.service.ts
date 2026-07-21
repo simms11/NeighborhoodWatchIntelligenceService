@@ -1,17 +1,19 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import axios from 'axios';
+import { PostcodeUtils } from '../../shared/utils/postcode.utils';
+import { Coordinates } from './interfaces/coordinates.interface';
 
 @Injectable()
 export class LocationService {
     private readonly POSTCODES_IO_URL = 'https://api.postcodes.io/postcodes';
     private readonly PHOTON_API_URL = 'https://photon.komoot.io/api/';
-    private readonly UK_POSTCODE_REGEX = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 
-    async getCoordinates(address: string): Promise<{ latitude: number; longitude: number }> {
+    async getCoordinates(address: string): Promise<Coordinates> {
         const trimmed = address.trim();
 
-        if (this.UK_POSTCODE_REGEX.test(trimmed)) {
-            const postcodeMatch = await this.lookupPostcode(trimmed);
+        if (PostcodeUtils.isValidPostcode(trimmed)) {
+            const formatted = PostcodeUtils.format(trimmed);
+            const postcodeMatch = await this.lookupPostcode(formatted);
             if (postcodeMatch) return postcodeMatch;
         }
 
@@ -21,22 +23,28 @@ export class LocationService {
         throw new NotFoundException(`Could not locate: ${address}`);
     }
 
-    private async lookupPostcode(postcode: string): Promise<{ latitude: number; longitude: number } | null> {
+    private async lookupPostcode(postcode: string): Promise<Coordinates | null> {
         try {
             const response = await axios.get(`${this.POSTCODES_IO_URL}/${encodeURIComponent(postcode)}`);
             const result = response.data?.result;
 
             if (result) {
-                return { latitude: result.latitude, longitude: result.longitude };
+                return { lat: result.latitude, lng: result.longitude };
             }
         } catch (error) {
+            // Retired postcodes 404 but postcodes.io still returns their last known
+            // location under `terminated` — that's still a valid place to search.
+            const terminated = axios.isAxiosError(error) ? error.response?.data?.terminated : undefined;
+            if (terminated?.latitude != null && terminated?.longitude != null) {
+                return { lat: terminated.latitude, lng: terminated.longitude };
+            }
             console.error(`postcodes.io lookup failed for: ${postcode}`);
         }
 
         return null;
     }
 
-    private async lookupCityName(address: string): Promise<{ latitude: number; longitude: number } | null> {
+    private async lookupCityName(address: string): Promise<Coordinates | null> {
         try {
             const response = await axios.get(this.PHOTON_API_URL, {
                 params: {
@@ -47,8 +55,8 @@ export class LocationService {
 
             const bestMatch = response.data?.features?.[0];
             if (bestMatch) {
-                const [longitude, latitude] = bestMatch.geometry.coordinates;
-                return { latitude, longitude };
+                const [lng, lat] = bestMatch.geometry.coordinates;
+                return { lat, lng };
             }
         } catch (error) {
             console.error(`Photon lookup failed for: ${address}`);
