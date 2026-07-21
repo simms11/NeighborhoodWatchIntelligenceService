@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LocationService } from './location.service';
+import { CacheService } from '../../shared/cache/cache.service';
 import { NotFoundException } from '@nestjs/common';
 import axios from 'axios';
 
@@ -14,7 +15,7 @@ describe('LocationService', () => {
         mockedAxios.isAxiosError.mockReturnValue(false);
 
         const module: TestingModule = await Test.createTestingModule({
-            providers: [LocationService],
+            providers: [LocationService, CacheService],
         }).compile();
 
         service = module.get(LocationService);
@@ -86,5 +87,25 @@ describe('LocationService', () => {
         mockedAxios.get.mockRejectedValue(new Error('network error'));
 
         await expect(service.getCoordinates('Nowhereville')).rejects.toThrow(NotFoundException);
+    });
+
+    it('caches a resolved geocode so a repeat lookup skips the network', async () => {
+        mockedAxios.get.mockResolvedValue({
+            data: { result: { latitude: 51.5, longitude: -0.12 } },
+        });
+
+        await service.getCoordinates('SW1A 2AA');
+        await service.getCoordinates('sw1a2aa');
+
+        expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not cache a failed lookup', async () => {
+        mockedAxios.get.mockRejectedValue(new Error('network error'));
+
+        await expect(service.getCoordinates('Nowhereville')).rejects.toThrow(NotFoundException);
+        await expect(service.getCoordinates('Nowhereville')).rejects.toThrow(NotFoundException);
+
+        expect(mockedAxios.get).toHaveBeenCalledTimes(2);
     });
 });

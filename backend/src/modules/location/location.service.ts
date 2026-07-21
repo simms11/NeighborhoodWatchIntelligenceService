@@ -1,16 +1,26 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import axios from 'axios';
 import { PostcodeUtils } from '../../shared/utils/postcode.utils';
+import { CacheService } from '../../shared/cache/cache.service';
 import { Coordinates } from './interfaces/coordinates.interface';
+
+const GEOCODE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // coordinates for a place don't change
 
 @Injectable()
 export class LocationService {
     private readonly POSTCODES_IO_URL = 'https://api.postcodes.io/postcodes';
     private readonly PHOTON_API_URL = 'https://photon.komoot.io/api/';
 
+    constructor(private readonly cache: CacheService) {}
+
     async getCoordinates(address: string): Promise<Coordinates> {
         const trimmed = address.trim();
+        const cacheKey = `geocode:${PostcodeUtils.normalize(trimmed)}`;
 
+        return this.cache.getOrSet(cacheKey, GEOCODE_CACHE_TTL_MS, () => this.resolveCoordinates(trimmed));
+    }
+
+    private async resolveCoordinates(trimmed: string): Promise<Coordinates> {
         if (PostcodeUtils.isValidPostcode(trimmed)) {
             const formatted = PostcodeUtils.format(trimmed);
             const postcodeMatch = await this.lookupPostcode(formatted);
@@ -20,7 +30,7 @@ export class LocationService {
         const cityMatch = await this.lookupCityName(trimmed);
         if (cityMatch) return cityMatch;
 
-        throw new NotFoundException(`Could not locate: ${address}`);
+        throw new NotFoundException(`Could not locate: ${trimmed}`);
     }
 
     private async lookupPostcode(postcode: string): Promise<Coordinates | null> {

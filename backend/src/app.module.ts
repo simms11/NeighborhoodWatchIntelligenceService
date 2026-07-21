@@ -1,8 +1,11 @@
 import {Module} from '@nestjs/common';
 import {ThrottlerModule, ThrottlerGuard} from '@nestjs/throttler';
+import {ScheduleModule} from '@nestjs/schedule';
 import {APP_GUARD} from '@nestjs/core';
 import {CrimeModule} from './modules/crime/crime.module';
 import {LocationModule} from './modules/location/location.module';
+import {CacheModule} from './shared/cache/cache.module';
+import {HealthModule} from './shared/health/health.module';
 
 @Module({
     imports: [
@@ -11,6 +14,9 @@ import {LocationModule} from './modules/location/location.module';
             ttl: 60000,
             limit: 10,
         }]),
+        ScheduleModule.forRoot(),
+        CacheModule,
+        HealthModule,
         CrimeModule,
         LocationModule,
     ],
