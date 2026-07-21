@@ -25,26 +25,51 @@ export class CrimeService {
         return this.getCrimesAt(lat, lng);
     }
 
-    /** Month-by-month incident counts for the trend view, oldest first. */
-    async getTrendByPostcode(postcode: string, months = 6): Promise<MonthlyCrimeCount[]> {
+    /**
+     * Month-by-month incident counts for the trend view, oldest first.
+     *
+     * Fetched sequentially rather than in parallel — Police.uk's public API
+     * rate-limits fairly aggressively, and firing several concurrent
+     * requests for one trend lookup (on top of the main search) was enough
+     * to trip it.
+     */
+    async getTrendByPostcode(postcode: string, months = 12): Promise<MonthlyCrimeCount[]> {
         const { lat, lng } = await this.locationService.getCoordinates(postcode);
         const monthKeys = this.lastNMonthKeys(months);
 
-        return Promise.all(
-            monthKeys.map(async (month) => {
-                try {
-                    const crimes = await this.getCrimesAt(lat, lng, month);
-                    return { month, total: crimes.length };
-                } catch (error) {
-                    console.error(`Trend lookup failed for ${month}`, error);
-                    return { month, total: 0 };
-                }
-            }),
-        );
+        const counts: MonthlyCrimeCount[] = [];
+        for (const month of monthKeys) {
+            // Only throttle on an actual network call — a fully-cached trend
+            // shouldn't pay a ~1s artificial delay for no reason.
+            const cacheKey = this.buildCacheKey(lat, lng, month);
+            const wasCached = this.cache.get(cacheKey) !== undefined;
+
+            try {
+                const crimes = await this.getCrimesAt(lat, lng, month);
+                counts.push({ month, total: crimes.length });
+            } catch (error) {
+                console.error(`Trend lookup failed for ${month}`, error);
+                counts.push({ month, total: 0 });
+            }
+
+            if (!wasCached) {
+                await this.delay(150);
+            }
+        }
+
+        return counts;
+    }
+
+    private delay(ms: number): Promise<void> {
+        return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    private buildCacheKey(lat: number, lng: number, date?: string): string {
+        return `crimes:${lat}:${lng}:${date ?? 'latest'}`;
     }
 
     private async getCrimesAt(lat: number, lng: number, date?: string): Promise<Crime[]> {
-        const cacheKey = `crimes:${lat}:${lng}:${date ?? 'latest'}`;
+        const cacheKey = this.buildCacheKey(lat, lng, date);
 
         return this.cache.getOrSet(cacheKey, CRIME_CACHE_TTL_MS, async () => {
             const response = await axios.get(this.POLICE_API_URL, {

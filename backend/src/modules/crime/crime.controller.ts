@@ -19,7 +19,7 @@ export class CrimeController {
     @Get('trend')
     @ApiOperation({ summary: 'Month-by-month incident counts for the last N months near a location' })
     @ApiQuery({ name: 'postcode', example: 'SW1A 2AA', description: 'UK postcode or a city/town name' })
-    @ApiQuery({ name: 'months', required: false, example: 6, description: 'Number of months to include (default 6)' })
+    @ApiQuery({ name: 'months', required: false, example: 12, description: 'Number of months to include (default 12)' })
     @ApiResponse({ status: 200, description: 'Array of { month, total } incident counts, oldest first' })
     @ApiResponse({ status: 404, description: 'The postcode or place name could not be located' })
     async trend(@Query('postcode') postcode: string, @Query('months') months?: string) {
