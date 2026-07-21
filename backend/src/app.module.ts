@@ -6,6 +6,7 @@ import {CrimeModule} from './modules/crime/crime.module';
 import {LocationModule} from './modules/location/location.module';
 import {CacheModule} from './shared/cache/cache.module';
 import {HealthModule} from './shared/health/health.module';
+import {DatabaseModule} from './shared/database/database.module';
 
 @Module({
     imports: [
@@ -16,6 +17,7 @@ import {HealthModule} from './shared/health/health.module';
         }]),
         ScheduleModule.forRoot(),
         CacheModule,
+        DatabaseModule,
         HealthModule,
         CrimeModule,
         LocationModule,
