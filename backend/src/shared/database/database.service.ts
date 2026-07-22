@@ -1,12 +1,13 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { Pool, QueryResult, QueryResultRow } from 'pg';
+import { SCHEMA_SQL } from './schema';
 
 @Injectable()
 export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     private readonly logger = new Logger(DatabaseService.name);
     private pool: Pool | null = null;
 
-    onModuleInit(): void {
+    async onModuleInit(): Promise<void> {
         const connectionString = process.env.DATABASE_URL;
         if (!connectionString) {
             this.logger.warn('DATABASE_URL not set — database features are disabled.');
@@ -17,6 +18,13 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
             connectionString,
             ssl: { rejectUnauthorized: false },
         });
+
+        try {
+            await this.pool.query(SCHEMA_SQL);
+            this.logger.log('Database schema is up to date.');
+        } catch (error) {
+            this.logger.error(`Failed to apply database schema: ${(error as Error).message}`);
+        }
     }
 
     async onModuleDestroy(): Promise<void> {

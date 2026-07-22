@@ -1,5 +1,6 @@
 import { DatabaseService } from './database.service';
 import { Pool } from 'pg';
+import { SCHEMA_SQL } from './schema';
 
 jest.mock('pg', () => {
     const mPool = {
@@ -19,10 +20,10 @@ describe('DatabaseService', () => {
     });
 
     describe('when DATABASE_URL is not set', () => {
-        beforeEach(() => {
+        beforeEach(async () => {
             delete process.env.DATABASE_URL;
             service = new DatabaseService();
-            service.onModuleInit();
+            await service.onModuleInit();
         });
 
         it('reports as not configured', () => {
@@ -38,16 +39,43 @@ describe('DatabaseService', () => {
         });
     });
 
-    describe('when DATABASE_URL is set', () => {
+    describe('schema migration on startup', () => {
         let mockPool: { query: jest.Mock; end: jest.Mock };
 
         beforeEach(() => {
             process.env.DATABASE_URL = 'postgresql://user:pass@host/db';
             service = new DatabaseService();
-            service.onModuleInit();
 
-            const poolMockResults = (Pool as unknown as jest.Mock).mock.results;
-            mockPool = poolMockResults[poolMockResults.length - 1].value;
+            mockPool = (Pool as unknown as jest.Mock)();
+        });
+
+        it('applies the schema migration against the pool', async () => {
+            mockPool.query.mockResolvedValue({ rows: [] });
+
+            await service.onModuleInit();
+
+            expect(mockPool.query).toHaveBeenCalledWith(SCHEMA_SQL);
+        });
+
+        it('logs but does not throw if the migration fails', async () => {
+            mockPool.query.mockRejectedValue(new Error('permission denied'));
+
+            await expect(service.onModuleInit()).resolves.toBeUndefined();
+        });
+    });
+
+    describe('when DATABASE_URL is set', () => {
+        let mockPool: { query: jest.Mock; end: jest.Mock };
+
+        beforeEach(async () => {
+            process.env.DATABASE_URL = 'postgresql://user:pass@host/db';
+            service = new DatabaseService();
+
+            mockPool = (Pool as unknown as jest.Mock)();
+            mockPool.query.mockResolvedValue({ rows: [] });
+
+            await service.onModuleInit();
+            mockPool.query.mockClear();
         });
 
         it('reports as configured', () => {
