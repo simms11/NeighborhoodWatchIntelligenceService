@@ -1,18 +1,21 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import axios from 'axios';
 import { LocationService } from '../location/location.service';
 import { CacheService } from '../../shared/cache/cache.service';
+import { DatabaseService } from '../../shared/database/database.service';
 import { Crime, MonthlyCrimeCount } from './interfaces/crime.interface';
 
 const CRIME_CACHE_TTL_MS = 60 * 60 * 1000; // Police.uk data only refreshes monthly
 
 @Injectable()
 export class CrimeService {
+    private readonly logger = new Logger(CrimeService.name);
     private readonly POLICE_API_URL = 'https://data.police.uk/api/crimes-street/all-crime';
 
     constructor(
         private readonly locationService: LocationService,
         private readonly cache: CacheService,
+        private readonly database: DatabaseService,
     ) {}
 
     async getCrimesByPostcode(postcode: string): Promise<Crime[]> {
@@ -70,8 +73,74 @@ export class CrimeService {
             const response = await axios.get(this.POLICE_API_URL, {
                 params: date ? { lat, lng, date } : { lat, lng },
             });
-            return response.data as Crime[];
+            const crimes = response.data as Crime[];
+
+            // Fire-and-forget: archiving to Postgres is a nice-to-have for
+            // future historical lookback, not something a user's search
+            // should ever wait on.
+            void this.persistCrimes(lat, lng, date, crimes);
+
+            return crimes;
         });
+    }
+
+    /**
+     * Write-through archive: every location someone actually searches gets
+     * persisted, building historical coverage organically instead of
+     * bulk-backfilling the whole UK (which free-tier Postgres storage
+     * couldn't hold anyway).
+     */
+    private async persistCrimes(
+        lat: number,
+        lng: number,
+        date: string | undefined,
+        crimes: Crime[],
+    ): Promise<void> {
+        if (!this.database.isConfigured()) return;
+
+        // Police.uk returns one month's data per call; every crime in the
+        // batch shares the same `month`. Falls back to the requested `date`
+        // for the rare case of zero crimes with no month to read it from.
+        const month = crimes[0]?.month ?? date;
+        if (!month) return;
+
+        try {
+            if (crimes.length > 0) {
+                const values: unknown[] = [];
+                const placeholders = crimes.map((crime, i) => {
+                    const o = i * 9;
+                    values.push(
+                        crime.id,
+                        crime.category,
+                        crime.month,
+                        crime.location.latitude,
+                        crime.location.longitude,
+                        crime.location.street.id,
+                        crime.location.street.name,
+                        crime.outcome_status?.category ?? null,
+                        crime.outcome_status?.date ?? null,
+                    );
+                    return `($${o + 1}, $${o + 2}, to_date($${o + 3}, 'YYYY-MM'), $${o + 4}, $${o + 5}, $${o + 6}, $${o + 7}, $${o + 8}, $${o + 9})`;
+                });
+
+                await this.database.query(
+                    `INSERT INTO crimes (id, category, month, latitude, longitude, street_id, street_name, outcome_category, outcome_date)
+                     VALUES ${placeholders.join(', ')}
+                     ON CONFLICT (id) DO NOTHING`,
+                    values,
+                );
+            }
+
+            await this.database.query(
+                `INSERT INTO crime_search_ingestions (latitude, longitude, month, crime_count)
+                 VALUES ($1, $2, to_date($3, 'YYYY-MM'), $4)
+                 ON CONFLICT (latitude, longitude, month)
+                 DO UPDATE SET crime_count = EXCLUDED.crime_count, ingested_at = now()`,
+                [lat, lng, month, crimes.length],
+            );
+        } catch (error) {
+            this.logger.error(`Failed to archive crimes for ${lat},${lng} (${month}): ${(error as Error).message}`);
+        }
     }
 
     /**
