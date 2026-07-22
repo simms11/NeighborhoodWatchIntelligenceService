@@ -225,4 +225,87 @@ describe('CrimeService', () => {
             expect(result).toEqual([fullCrime]);
         });
     });
+
+    describe('refreshTrackedLocations', () => {
+        const trackedLocations = [
+            { latitude: 51.5074, longitude: -0.1278 },
+            { latitude: 53.4808, longitude: -2.2426 },
+        ];
+        const refreshCrime = {
+            id: 99,
+            category: 'burglary',
+            location_type: 'Force',
+            location: { latitude: 53.4808, longitude: -2.2426, street: { id: 3, name: 'On or near Test Street' } },
+            context: '',
+            outcome_status: null,
+            month: '2026-05',
+        };
+
+        it('does nothing when the database is not configured', async () => {
+            mockDatabaseService.isConfigured.mockReturnValue(false);
+
+            await service.refreshTrackedLocations();
+
+            expect(mockDatabaseService.query).not.toHaveBeenCalled();
+            expect(mockedAxios.get).not.toHaveBeenCalled();
+        });
+
+        it('skips locations already ingested for the latest month, and fetches the ones that are missing it', async () => {
+            mockDatabaseService.isConfigured.mockReturnValue(true);
+            mockDatabaseService.query.mockImplementation((sql: string, params?: unknown[]) => {
+                if (sql.includes('DISTINCT latitude')) {
+                    return Promise.resolve({ rows: trackedLocations });
+                }
+                if (sql.startsWith('SELECT 1 FROM crime_search_ingestions')) {
+                    const [latitude] = params as [number, number, string];
+                    const alreadyCurrent = latitude === trackedLocations[0].latitude;
+                    return Promise.resolve({ rowCount: alreadyCurrent ? 1 : 0, rows: [] });
+                }
+                return Promise.resolve({ rows: [] });
+            });
+            mockedAxios.get.mockResolvedValue({ data: [refreshCrime] });
+
+            await service.refreshTrackedLocations();
+
+            expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+            expect(mockedAxios.get).toHaveBeenCalledWith(
+                'https://data.police.uk/api/crimes-street/all-crime',
+                {
+                    params: {
+                        lat: trackedLocations[1].latitude,
+                        lng: trackedLocations[1].longitude,
+                        date: expect.stringMatching(/^\d{4}-\d{2}$/),
+                    },
+                },
+            );
+        });
+
+        it('keeps refreshing remaining locations if one fails', async () => {
+            mockDatabaseService.isConfigured.mockReturnValue(true);
+            mockDatabaseService.query.mockImplementation((sql: string) => {
+                if (sql.includes('DISTINCT latitude')) {
+                    return Promise.resolve({ rows: trackedLocations });
+                }
+                if (sql.startsWith('SELECT 1 FROM crime_search_ingestions')) {
+                    return Promise.resolve({ rowCount: 0, rows: [] });
+                }
+                return Promise.resolve({ rows: [] });
+            });
+            mockedAxios.get
+                .mockRejectedValueOnce(new Error('Police API unavailable'))
+                .mockResolvedValueOnce({ data: [refreshCrime] });
+
+            await service.refreshTrackedLocations();
+
+            expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+        });
+
+        it('logs but does not throw if loading tracked locations fails', async () => {
+            mockDatabaseService.isConfigured.mockReturnValue(true);
+            mockDatabaseService.query.mockRejectedValue(new Error('connection refused'));
+
+            await expect(service.refreshTrackedLocations()).resolves.toBeUndefined();
+            expect(mockedAxios.get).not.toHaveBeenCalled();
+        });
+    });
 });

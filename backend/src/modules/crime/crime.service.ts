@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import axios from 'axios';
 import { LocationService } from '../location/location.service';
 import { CacheService } from '../../shared/cache/cache.service';
@@ -140,6 +141,51 @@ export class CrimeService {
             );
         } catch (error) {
             this.logger.error(`Failed to archive crimes for ${lat},${lng} (${month}): ${(error as Error).message}`);
+        }
+    }
+
+    /**
+     * Keeps previously-searched locations current without requiring a user
+     * to re-search. Runs daily rather than monthly — Police.uk's exact
+     * publish date within a month varies, and re-checking is cheap (a
+     * metadata lookup) on the days there's nothing new to fetch.
+     */
+    @Cron(CronExpression.EVERY_DAY_AT_3AM)
+    async refreshTrackedLocations(): Promise<void> {
+        if (!this.database.isConfigured()) return;
+
+        const latestMonth = this.lastNMonthKeys(1)[0];
+
+        let locations: { latitude: number; longitude: number }[];
+        try {
+            const result = await this.database.query<{ latitude: number; longitude: number }>(
+                'SELECT DISTINCT latitude, longitude FROM crime_search_ingestions',
+            );
+            locations = result.rows;
+        } catch (error) {
+            this.logger.error(`Failed to load tracked locations for refresh: ${(error as Error).message}`);
+            return;
+        }
+
+        this.logger.log(`Refreshing ${locations.length} tracked location(s) for ${latestMonth}.`);
+
+        for (const { latitude, longitude } of locations) {
+            try {
+                const alreadyIngested = await this.database.query(
+                    `SELECT 1 FROM crime_search_ingestions WHERE latitude = $1 AND longitude = $2 AND month = to_date($3, 'YYYY-MM')`,
+                    [latitude, longitude, latestMonth],
+                );
+                if ((alreadyIngested.rowCount ?? 0) > 0) continue;
+
+                const wasCached = this.cache.get(this.buildCacheKey(latitude, longitude, latestMonth)) !== undefined;
+                await this.getCrimesAt(latitude, longitude, latestMonth);
+
+                if (!wasCached) {
+                    await this.delay(150);
+                }
+            } catch (error) {
+                this.logger.error(`Failed to refresh ${latitude},${longitude}: ${(error as Error).message}`);
+            }
         }
     }
 
