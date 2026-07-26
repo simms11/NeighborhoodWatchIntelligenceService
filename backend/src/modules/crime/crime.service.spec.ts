@@ -135,6 +135,7 @@ describe('CrimeService', () => {
     describe('write-through persistence to Postgres', () => {
         const fullCrime = {
             id: 42,
+            persistent_id: 'abc123def456',
             category: 'burglary',
             location_type: 'Force',
             location: { latitude: 51.5074, longitude: -0.1278, street: { id: 7, name: 'On or near High Street' } },
@@ -169,9 +170,10 @@ describe('CrimeService', () => {
 
             const [crimesSql, crimesParams] = mockDatabaseService.query.mock.calls[0];
             expect(crimesSql).toContain('INSERT INTO crimes');
-            expect(crimesSql).toContain('ON CONFLICT (id) DO NOTHING');
+            expect(crimesSql).toContain('ON CONFLICT (source_id) WHERE source_id IS NOT NULL DO NOTHING');
             expect(crimesParams).toEqual([
                 fullCrime.id,
+                fullCrime.persistent_id,
                 fullCrime.category,
                 fullCrime.month,
                 fullCrime.location.latitude,
@@ -185,6 +187,18 @@ describe('CrimeService', () => {
             const [ingestionSql, ingestionParams] = mockDatabaseService.query.mock.calls[1];
             expect(ingestionSql).toContain('INSERT INTO crime_search_ingestions');
             expect(ingestionParams).toEqual([51.5074, -0.1278, '2026-05', 1]);
+        });
+
+        it('stores a blank persistent_id as null rather than an empty string', async () => {
+            mockDatabaseService.isConfigured.mockReturnValue(true);
+            mockDatabaseService.query.mockResolvedValue({ rows: [] });
+            mockedAxios.get.mockResolvedValue({ data: [{ ...fullCrime, persistent_id: '' }] });
+
+            await service.getCrimesByPostcode('SW1A 2AA');
+            await flushMicrotasks();
+
+            const [, crimesParams] = mockDatabaseService.query.mock.calls[0];
+            expect(crimesParams[1]).toBeNull();
         });
 
         it('still records a zero-crime ingestion when nothing was found for an explicit month', async () => {

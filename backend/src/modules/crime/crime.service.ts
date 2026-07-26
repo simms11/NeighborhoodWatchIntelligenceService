@@ -108,10 +108,12 @@ export class CrimeService {
         try {
             if (crimes.length > 0) {
                 const values: unknown[] = [];
+                const columnsPerCrime = 10;
                 const placeholders = crimes.map((crime, i) => {
-                    const o = i * 9;
+                    const o = i * columnsPerCrime;
                     values.push(
                         crime.id,
+                        crime.persistent_id || null,
                         crime.category,
                         crime.month,
                         crime.location.latitude,
@@ -121,13 +123,13 @@ export class CrimeService {
                         crime.outcome_status?.category ?? null,
                         crime.outcome_status?.date ?? null,
                     );
-                    return `($${o + 1}, $${o + 2}, to_date($${o + 3}, 'YYYY-MM'), $${o + 4}, $${o + 5}, $${o + 6}, $${o + 7}, $${o + 8}, $${o + 9})`;
+                    return `($${o + 1}, $${o + 2}, $${o + 3}, to_date($${o + 4}, 'YYYY-MM'), $${o + 5}, $${o + 6}, $${o + 7}, $${o + 8}, $${o + 9}, $${o + 10})`;
                 });
 
                 await this.database.query(
-                    `INSERT INTO crimes (id, category, month, latitude, longitude, street_id, street_name, outcome_category, outcome_date)
+                    `INSERT INTO crimes (source_id, persistent_id, category, month, latitude, longitude, street_id, street_name, outcome_category, outcome_date)
                      VALUES ${placeholders.join(', ')}
-                     ON CONFLICT (id) DO NOTHING`,
+                     ON CONFLICT (source_id) WHERE source_id IS NOT NULL DO NOTHING`,
                     values,
                 );
             }

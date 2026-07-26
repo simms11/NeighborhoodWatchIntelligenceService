@@ -9,6 +9,7 @@ export interface CrimeLocation {
 
 export interface Crime {
     id: number;
+    persistent_id?: string;
     category: string;
     location_type: string;
     location: CrimeLocation;
