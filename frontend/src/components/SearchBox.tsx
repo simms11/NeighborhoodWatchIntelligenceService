@@ -36,7 +36,7 @@ export const SearchBox = ({ onSearch, isLoading }: SearchBoxProps) => {
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="e.g. SW1A 2AA, London, Manchester"
                     disabled={isLoading}
-                    className="flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm transition-shadow"
+                    className="flex-1 min-w-0 px-3 py-2 border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-base sm:text-sm transition-shadow"
                 />
                 <button
                     type="submit"
