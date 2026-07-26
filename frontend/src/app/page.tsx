@@ -93,7 +93,7 @@ export default function NeighborhoodDashboard() {
               )}
             </aside>
 
-            <section className="h-[600px] w-full">
+            <section className="h-[300px] sm:h-[450px] lg:h-[600px] w-full">
               <div className="h-full w-full rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 shadow-md bg-white dark:bg-gray-900 relative z-0">
                 <CrimeMap
                     datasets={datasets}
