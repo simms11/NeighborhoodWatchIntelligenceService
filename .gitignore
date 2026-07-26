@@ -9,6 +9,7 @@ backend/dist/
 frontend/.next/
 frontend/out/
 build/
+*.tsbuildinfo
 
 # Cleanup: Prevent generated JS from being committed
 backend/src/**/*.js
