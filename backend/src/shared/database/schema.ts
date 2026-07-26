@@ -41,6 +41,9 @@ export const SCHEMA_SQL = `
         ) THEN
             ALTER TABLE crimes RENAME COLUMN id TO source_id;
             ALTER TABLE crimes DROP CONSTRAINT IF EXISTS crimes_pkey;
+            -- Dropping the PK constraint above does not clear the NOT NULL
+            -- it implied; bulk-backfilled rows have no source_id at all.
+            ALTER TABLE crimes ALTER COLUMN source_id DROP NOT NULL;
             ALTER TABLE crimes ADD COLUMN IF NOT EXISTS pk BIGSERIAL;
             ALTER TABLE crimes ADD PRIMARY KEY (pk);
         END IF;
