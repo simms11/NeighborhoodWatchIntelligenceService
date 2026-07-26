@@ -166,9 +166,10 @@ describe('CrimeService', () => {
             await service.getCrimesByPostcode('SW1A 2AA');
             await flushMicrotasks();
 
-            expect(mockDatabaseService.query).toHaveBeenCalledTimes(2);
+            // Calls[0] is the archive lookup (returns empty, falls through to live).
+            expect(mockDatabaseService.query).toHaveBeenCalledTimes(3);
 
-            const [crimesSql, crimesParams] = mockDatabaseService.query.mock.calls[0];
+            const [crimesSql, crimesParams] = mockDatabaseService.query.mock.calls[1];
             expect(crimesSql).toContain('INSERT INTO crimes');
             expect(crimesSql).toContain('ON CONFLICT (source_id) WHERE source_id IS NOT NULL DO NOTHING');
             expect(crimesParams).toEqual([
@@ -184,7 +185,7 @@ describe('CrimeService', () => {
                 fullCrime.outcome_status.date,
             ]);
 
-            const [ingestionSql, ingestionParams] = mockDatabaseService.query.mock.calls[1];
+            const [ingestionSql, ingestionParams] = mockDatabaseService.query.mock.calls[2];
             expect(ingestionSql).toContain('INSERT INTO crime_search_ingestions');
             expect(ingestionParams).toEqual([51.5074, -0.1278, '2026-05', 1]);
         });
@@ -197,7 +198,7 @@ describe('CrimeService', () => {
             await service.getCrimesByPostcode('SW1A 2AA');
             await flushMicrotasks();
 
-            const [, crimesParams] = mockDatabaseService.query.mock.calls[0];
+            const [, crimesParams] = mockDatabaseService.query.mock.calls[1];
             expect(crimesParams[1]).toBeNull();
         });
 
@@ -209,8 +210,9 @@ describe('CrimeService', () => {
             await service.getTrendByPostcode('SW1A 2AA', 1);
             await flushMicrotasks();
 
-            expect(mockDatabaseService.query).toHaveBeenCalledTimes(1);
-            const [sql, params] = mockDatabaseService.query.mock.calls[0];
+            // Calls[0] is the archive lookup (returns empty, falls through to live).
+            expect(mockDatabaseService.query).toHaveBeenCalledTimes(2);
+            const [sql, params] = mockDatabaseService.query.mock.calls[1];
             expect(sql).toContain('INSERT INTO crime_search_ingestions');
             expect(params[3]).toBe(0);
         });
@@ -225,7 +227,10 @@ describe('CrimeService', () => {
             await service.getCrimesByPostcode('SW1A 2AA');
             await flushMicrotasks();
 
-            expect(mockDatabaseService.query).toHaveBeenCalledTimes(2);
+            // 1 archive lookup + 1 crimes insert + 1 ingestion insert from the
+            // first (uncached) call; the second call is served entirely from
+            // the in-memory cache and never touches the database.
+            expect(mockDatabaseService.query).toHaveBeenCalledTimes(3);
         });
 
         it('still returns crimes to the caller even if archiving fails', async () => {
@@ -237,6 +242,92 @@ describe('CrimeService', () => {
             await flushMicrotasks();
 
             expect(result).toEqual([fullCrime]);
+        });
+    });
+
+    describe('archive-first reads', () => {
+        const archivedRow = {
+            source_id: '135677814',
+            persistent_id: null,
+            category: 'burglary',
+            latitude: 51.5074,
+            longitude: -0.1278,
+            street_id: null,
+            street_name: 'On or near High Street',
+            outcome_category: 'Under investigation',
+            outcome_date: null,
+            month: new Date('2026-05-01T00:00:00.000Z'),
+        };
+
+        beforeEach(() => {
+            mockLocationService.getCoordinates.mockResolvedValue({ lat: 51.5074, lng: -0.1278 });
+            mockDatabaseService.isConfigured.mockReturnValue(true);
+        });
+
+        it('serves from the archive and never calls Police.uk when a match is found', async () => {
+            mockDatabaseService.query.mockResolvedValue({ rows: [archivedRow] });
+
+            const result = await service.getCrimesByPostcode('SW1A 2AA');
+
+            expect(mockedAxios.get).not.toHaveBeenCalled();
+            expect(mockDatabaseService.query).toHaveBeenCalledTimes(1);
+            expect(result).toEqual([
+                {
+                    id: 135677814,
+                    persistent_id: undefined,
+                    category: 'burglary',
+                    location_type: 'Force',
+                    location: { latitude: 51.5074, longitude: -0.1278, street: { id: 0, name: 'On or near High Street' } },
+                    context: '',
+                    outcome_status: { category: 'Under investigation', date: '' },
+                    month: '2026-05',
+                },
+            ]);
+        });
+
+        it('queries with a bounding box derived from the search point, not an exact match', async () => {
+            mockDatabaseService.query.mockResolvedValue({ rows: [archivedRow] });
+
+            await service.getCrimesByPostcode('SW1A 2AA');
+
+            const [sql, params] = mockDatabaseService.query.mock.calls[0];
+            expect(sql).toContain('BETWEEN');
+            const [, latMin, latMax, lngMin, lngMax] = params as number[];
+            expect(latMin).toBeLessThan(51.5074);
+            expect(latMax).toBeGreaterThan(51.5074);
+            expect(lngMin).toBeLessThan(-0.1278);
+            expect(lngMax).toBeGreaterThan(-0.1278);
+        });
+
+        it('falls back to Police.uk live when the archive has nothing for that month', async () => {
+            mockDatabaseService.query.mockResolvedValue({ rows: [] });
+            mockedAxios.get.mockResolvedValue({ data: [] });
+
+            await service.getCrimesByPostcode('SW1A 2AA');
+
+            expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+        });
+
+        it('falls back to Police.uk live if the archive lookup itself fails', async () => {
+            mockDatabaseService.query.mockRejectedValue(new Error('connection refused'));
+            mockedAxios.get.mockResolvedValue({ data: [] });
+
+            const result = await service.getCrimesByPostcode('SW1A 2AA');
+
+            expect(mockedAxios.get).toHaveBeenCalledTimes(1);
+            expect(result).toEqual([]);
+        });
+
+        it('does not apply the trend rate-limit delay for months served from the archive', async () => {
+            mockDatabaseService.query.mockResolvedValue({ rows: [archivedRow] });
+
+            const start = Date.now();
+            const result = await service.getTrendByPostcode('SW1A 2AA', 3);
+            const elapsedMs = Date.now() - start;
+
+            expect(mockedAxios.get).not.toHaveBeenCalled();
+            expect(result.every((entry) => entry.total === 1)).toBe(true);
+            expect(elapsedMs).toBeLessThan(150);
         });
     });
 

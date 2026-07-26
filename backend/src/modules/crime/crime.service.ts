@@ -8,6 +8,28 @@ import { Crime, MonthlyCrimeCount } from './interfaces/crime.interface';
 
 const CRIME_CACHE_TTL_MS = 60 * 60 * 1000; // Police.uk data only refreshes monthly
 
+// Approximates Police.uk's own street-level radius so archive reads surface
+// the same crimes a live call would have. Longitude degrees compress at
+// higher latitudes, so its delta is derived from latitude at query time.
+const SEARCH_RADIUS_MILES = 1;
+const KM_PER_MILE = 1.60934;
+const KM_PER_DEGREE_LATITUDE = 111.32;
+
+interface ArchivedCrimeRow {
+    // node-postgres returns BIGINT columns as strings to avoid precision
+    // loss on values outside JS's safe integer range.
+    source_id: string | null;
+    persistent_id: string | null;
+    category: string;
+    latitude: number;
+    longitude: number;
+    street_id: string | null;
+    street_name: string | null;
+    outcome_category: string | null;
+    outcome_date: string | null;
+    month: Date;
+}
+
 @Injectable()
 export class CrimeService {
     private readonly logger = new Logger(CrimeService.name);
@@ -21,7 +43,8 @@ export class CrimeService {
 
     async getCrimesByPostcode(postcode: string): Promise<Crime[]> {
         const { lat, lng } = await this.locationService.getCoordinates(postcode);
-        return this.getCrimesAt(lat, lng);
+        const { crimes } = await this.getCrimesAt(lat, lng);
+        return crimes;
     }
 
     /**
@@ -38,21 +61,19 @@ export class CrimeService {
 
         const counts: MonthlyCrimeCount[] = [];
         for (const month of monthKeys) {
-            // Only throttle on an actual network call — a fully-cached trend
-            // shouldn't pay a ~1s artificial delay for no reason.
-            const cacheKey = this.buildCacheKey(lat, lng, month);
-            const wasCached = this.cache.get(cacheKey) !== undefined;
-
             try {
-                const crimes = await this.getCrimesAt(lat, lng, month);
+                const { crimes, calledLiveApi } = await this.getCrimesAt(lat, lng, month);
                 counts.push({ month, total: crimes.length });
+
+                // Only throttle after an actual network call — a month served
+                // from cache or the Postgres archive shouldn't pay a ~1s
+                // artificial delay for no reason.
+                if (calledLiveApi) {
+                    await this.delay(150);
+                }
             } catch (error) {
                 console.error(`Trend lookup failed for ${month}`, error);
                 counts.push({ month, total: 0 });
-            }
-
-            if (!wasCached) {
-                await this.delay(150);
             }
         }
 
@@ -67,22 +88,101 @@ export class CrimeService {
         return `crimes:${lat}:${lng}:${date ?? 'latest'}`;
     }
 
-    private async getCrimesAt(lat: number, lng: number, date?: string): Promise<Crime[]> {
+    /**
+     * Checks the in-memory cache, then the Postgres archive, before ever
+     * calling Police.uk live — `calledLiveApi` tells callers whether a real
+     * network request happened, so they know whether a rate-limit delay is
+     * actually warranted.
+     */
+    private async getCrimesAt(
+        lat: number,
+        lng: number,
+        date?: string,
+    ): Promise<{ crimes: Crime[]; calledLiveApi: boolean }> {
         const cacheKey = this.buildCacheKey(lat, lng, date);
+        const cached = this.cache.get<Crime[]>(cacheKey);
+        if (cached !== undefined) {
+            return { crimes: cached, calledLiveApi: false };
+        }
 
-        return this.cache.getOrSet(cacheKey, CRIME_CACHE_TTL_MS, async () => {
-            const response = await axios.get(this.POLICE_API_URL, {
-                params: date ? { lat, lng, date } : { lat, lng },
-            });
-            const crimes = response.data as Crime[];
+        // `date` is only absent for the initial "latest" search — Police.uk
+        // decides what that resolves to, but our own archive is keyed by
+        // month, so we still need our best guess to look it up there first.
+        const archiveMonth = date ?? this.lastNMonthKeys(1)[0];
+        const archived = await this.getCrimesFromArchive(lat, lng, archiveMonth);
+        if (archived) {
+            this.cache.set(cacheKey, archived, CRIME_CACHE_TTL_MS);
+            return { crimes: archived, calledLiveApi: false };
+        }
 
-            // Fire-and-forget: archiving to Postgres is a nice-to-have for
-            // future historical lookback, not something a user's search
-            // should ever wait on.
-            void this.persistCrimes(lat, lng, date, crimes);
-
-            return crimes;
+        const response = await axios.get(this.POLICE_API_URL, {
+            params: date ? { lat, lng, date } : { lat, lng },
         });
+        const crimes = response.data as Crime[];
+        this.cache.set(cacheKey, crimes, CRIME_CACHE_TTL_MS);
+
+        // Fire-and-forget: archiving to Postgres is a nice-to-have for
+        // future historical lookback, not something a user's search
+        // should ever wait on.
+        void this.persistCrimes(lat, lng, date, crimes);
+
+        return { crimes, calledLiveApi: true };
+    }
+
+    /**
+     * Serves crimes directly from Postgres when available — covering both
+     * the lazy write-through archive and the Metropolitan Police bulk
+     * backfill, which share the same table. A bounding box approximates
+     * Police.uk's own ~1-mile street-level radius. Returns null (rather
+     * than an empty array) when nothing is archived, so the caller knows to
+     * fall back to a live call instead of reporting a false "zero crimes".
+     */
+    private async getCrimesFromArchive(lat: number, lng: number, month: string): Promise<Crime[] | null> {
+        if (!this.database.isConfigured()) return null;
+
+        const latDelta = (SEARCH_RADIUS_MILES * KM_PER_MILE) / KM_PER_DEGREE_LATITUDE;
+        const lngDelta = latDelta / Math.cos((lat * Math.PI) / 180);
+
+        try {
+            const result = await this.database.query<ArchivedCrimeRow>(
+                `SELECT source_id, persistent_id, category, latitude, longitude, street_id, street_name, outcome_category, outcome_date, month
+                 FROM crimes
+                 WHERE month = to_date($1, 'YYYY-MM')
+                   AND latitude BETWEEN $2 AND $3
+                   AND longitude BETWEEN $4 AND $5`,
+                [month, lat - latDelta, lat + latDelta, lng - lngDelta, lng + lngDelta],
+            );
+
+            if (result.rows.length === 0) return null;
+
+            return result.rows.map((row) => this.rowToCrime(row));
+        } catch (error) {
+            this.logger.error(`Archive lookup failed for ${lat},${lng} (${month}): ${(error as Error).message}`);
+            return null;
+        }
+    }
+
+    /**
+     * `source_id` is null for bulk-backfilled rows (they have no live-API
+     * numeric id) — falls back to 0 rather than a synthetic value, since
+     * `id` isn't used as a lookup key anywhere once a crime has already
+     * come back from the archive, only as an opaque field on the response.
+     */
+    private rowToCrime(row: ArchivedCrimeRow): Crime {
+        return {
+            id: row.source_id ? Number(row.source_id) : 0,
+            persistent_id: row.persistent_id ?? undefined,
+            category: row.category,
+            location_type: 'Force',
+            location: {
+                latitude: row.latitude,
+                longitude: row.longitude,
+                street: { id: row.street_id ? Number(row.street_id) : 0, name: row.street_name ?? '' },
+            },
+            context: '',
+            outcome_status: row.outcome_category ? { category: row.outcome_category, date: row.outcome_date ?? '' } : null,
+            month: row.month.toISOString().slice(0, 7),
+        };
     }
 
     /**
@@ -179,10 +279,9 @@ export class CrimeService {
                 );
                 if ((alreadyIngested.rowCount ?? 0) > 0) continue;
 
-                const wasCached = this.cache.get(this.buildCacheKey(latitude, longitude, latestMonth)) !== undefined;
-                await this.getCrimesAt(latitude, longitude, latestMonth);
+                const { calledLiveApi } = await this.getCrimesAt(latitude, longitude, latestMonth);
 
-                if (!wasCached) {
+                if (calledLiveApi) {
                     await this.delay(150);
                 }
             } catch (error) {
