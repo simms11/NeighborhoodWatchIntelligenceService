@@ -68,7 +68,7 @@ export class LocationService {
                 const [lng, lat] = bestMatch.geometry.coordinates;
                 return { lat, lng };
             }
-        } catch (error) {
+        } catch {
             console.error(`Photon lookup failed for: ${address}`);
         }
 
