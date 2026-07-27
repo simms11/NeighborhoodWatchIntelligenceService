@@ -21,9 +21,9 @@ export const TrendChart = ({ data }: TrendChartProps) => {
             <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-3">
                 {data.length}-Month Trend
             </h3>
-            <div className="flex items-end gap-2 h-24">
+            <div className="flex items-end gap-2 h-24 overflow-x-auto">
                 {data.map((entry) => (
-                    <div key={entry.month} className="flex-1 h-full flex flex-col items-center justify-end gap-1">
+                    <div key={entry.month} className="flex-1 min-w-0 h-full flex flex-col items-center justify-end gap-1">
                         <div
                             className="w-full max-w-6 bg-blue-500 dark:bg-blue-400 rounded-t transition-all"
                             style={{ height: `${Math.max((entry.total / max) * 100, 4)}%` }}

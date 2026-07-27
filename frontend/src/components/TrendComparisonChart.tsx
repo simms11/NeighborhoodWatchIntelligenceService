@@ -43,9 +43,9 @@ export const TrendComparisonChart = ({ series }: TrendComparisonChartProps) => {
                     ))}
                 </div>
             </div>
-            <div className="flex items-end gap-3 h-32">
+            <div className="flex items-end gap-3 h-32 overflow-x-auto">
                 {months.map((month, index) => (
-                    <div key={month} className="flex-1 h-full flex flex-col items-center justify-end gap-1">
+                    <div key={month} className="flex-1 min-w-0 h-full flex flex-col items-center justify-end gap-1">
                         <div className="w-full h-full flex items-end justify-center gap-1">
                             {populated.map((entry) => {
                                 const total = entry.data[index]?.total ?? 0;
