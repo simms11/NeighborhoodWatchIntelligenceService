@@ -31,4 +31,16 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    // Jest mock references (e.g. passing `mockedAxios.get` around) routinely
+    // trip unbound-method, and hand-built mock response fixtures are
+    // necessarily loosely typed — both are expected, safe patterns in test
+    // code rather than real bugs.
+    files: ['**/*.spec.ts'],
+    rules: {
+      '@typescript-eslint/unbound-method': 'off',
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+    },
+  },
 );

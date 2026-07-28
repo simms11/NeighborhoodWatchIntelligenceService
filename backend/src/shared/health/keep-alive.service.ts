@@ -12,17 +12,17 @@ import axios from 'axios';
  */
 @Injectable()
 export class KeepAliveService {
-    private readonly logger = new Logger(KeepAliveService.name);
+  private readonly logger = new Logger(KeepAliveService.name);
 
-    @Cron(CronExpression.EVERY_10_MINUTES)
-    async ping(): Promise<void> {
-        const baseUrl = process.env.RENDER_EXTERNAL_URL;
-        if (!baseUrl) return;
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async ping(): Promise<void> {
+    const baseUrl = process.env.RENDER_EXTERNAL_URL;
+    if (!baseUrl) return;
 
-        try {
-            await axios.get(`${baseUrl}/health`, { timeout: 10_000 });
-        } catch (error) {
-            this.logger.warn(`Keep-alive ping failed: ${(error as Error).message}`);
-        }
+    try {
+      await axios.get(`${baseUrl}/health`, { timeout: 10_000 });
+    } catch (error) {
+      this.logger.warn(`Keep-alive ping failed: ${(error as Error).message}`);
     }
+  }
 }

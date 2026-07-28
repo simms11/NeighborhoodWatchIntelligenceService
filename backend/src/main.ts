@@ -19,17 +19,19 @@ async function bootstrap() {
   app.useGlobalFilters(new GlobalExceptionFilter());
 
   const config = new DocumentBuilder()
-      .setTitle('Neighborhood Watch Intelligence API')
-      .setVersion('1.0')
-      .addTag('crimes')
-      .build();
+    .setTitle('Neighborhood Watch Intelligence API')
+    .setVersion('1.0')
+    .addTag('crimes')
+    .build();
 
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
   const port = process.env.PORT || 3001;
   await app.listen(port);
-  console.log(`Backend running on port ${port}: http://localhost:${port}/api/docs`);
+  console.log(
+    `Backend running on port ${port}: http://localhost:${port}/api/docs`,
+  );
 }
 bootstrap().catch((error) => {
   console.error('Failed to start application', error);

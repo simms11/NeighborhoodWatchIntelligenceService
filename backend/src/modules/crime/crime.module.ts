@@ -5,11 +5,8 @@ import { CrimeService } from './crime.service';
 import { LocationModule } from '../location/location.module';
 
 @Module({
-    imports: [
-        HttpModule,
-        LocationModule
-    ],
-    controllers: [CrimeController],
-    providers: [CrimeService],
+  imports: [HttpModule, LocationModule],
+  controllers: [CrimeController],
+  providers: [CrimeService],
 })
 export class CrimeModule {}
