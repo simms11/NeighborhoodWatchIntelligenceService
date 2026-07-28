@@ -1,0 +1,15 @@
+{
+  "name": "@neighborhood-watch/shared-types",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Crime/trend TypeScript interfaces shared between the backend API and frontend",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.1.3"
+  }
+}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Crime } from '../../../backend/src/modules/crime/interfaces/crime.interface';
+import { Crime } from '@neighborhood-watch/shared-types';
 
 interface CrimeStatsProps {
     crimes: Crime[];

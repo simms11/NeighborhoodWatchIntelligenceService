@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Crime, MonthlyCrimeCount } from '../../../backend/src/modules/crime/interfaces/crime.interface';
+import { Crime, MonthlyCrimeCount } from '@neighborhood-watch/shared-types';
 import { fetchCrimes, fetchTrend } from '../services/api';
 
 export interface LocationSearchState {

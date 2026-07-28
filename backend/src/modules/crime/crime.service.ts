@@ -4,7 +4,7 @@ import axios from 'axios';
 import { LocationService } from '../location/location.service';
 import { CacheService } from '../../shared/cache/cache.service';
 import { DatabaseService } from '../../shared/database/database.service';
-import { Crime, MonthlyCrimeCount } from './interfaces/crime.interface';
+import { Crime, MonthlyCrimeCount } from '@neighborhood-watch/shared-types';
 
 const CRIME_CACHE_TTL_MS = 60 * 60 * 1000; // Police.uk data only refreshes monthly
 

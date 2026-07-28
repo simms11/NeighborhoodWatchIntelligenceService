@@ -1,5 +1,5 @@
 import React from 'react';
-import { MonthlyCrimeCount } from '../../../backend/src/modules/crime/interfaces/crime.interface';
+import { MonthlyCrimeCount } from '@neighborhood-watch/shared-types';
 
 export interface TrendSeries {
     label: string;

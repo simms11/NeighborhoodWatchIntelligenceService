@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Crime } from '../../../../backend/src/modules/crime/interfaces/crime.interface';
+import { Crime } from '@neighborhood-watch/shared-types';
 
 export interface CrimeDataset {
     label: string;

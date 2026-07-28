@@ -1,7 +1,9 @@
 {
-  "dependencies": {
-    "@types/leaflet": "^1.9.21",
-    "leaflet": "^1.9.4",
-    "react-leaflet": "^5.0.0"
-  }
+  "name": "neighborhood-watch-intelligence-service",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend",
+    "packages/*"
+  ]
 }
